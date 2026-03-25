@@ -1915,27 +1915,29 @@ module.exports = nmd_axis = async (nimesha, m, msg, store) => {
         // ══════════════════════════════════════════════════════
         // ════════ AUTO STATUS VIEW + REACT ════════════════════
         // ══════════════════════════════════════════════════════
-        if (m.messages && Object.values(m.messages).some(msg => msg?.key?.remoteJid === 'status@broadcast')) {
+        // 2026 fix: m.key check (single msg) — m.messages නෑ
+        if (m.key && m.key.remoteJid === 'status@broadcast') {
             try {
                 if (set.autostatus) {
-                    for (const message of Object.values(m.messages)) {
-                        if (message?.key?.remoteJid === 'status@broadcast') {
-                            try {
-                                // Status ස්වයංක්‍රීයව read/view කරනවා
-                                await nimesha.readMessages([message.key]);
-                                console.log(`👁️ AutoStatus View - @${(message.key.participant || '').split('@')[0]}`);
-                                // autoreact enabled නම් react කරනවා
-                                if (set.autostatusreact) {
-                                    const emoji = getRandomEmoji();
-                                    await nimesha.sendMessage(message.key.participant || message.key.remoteJid, { react: { text: emoji, key: message.key } }).catch(() => {});
-                                    console.log(`❤️ AutoStatus React - ${emoji}`);
-                                }
-                            } catch (e) {
-                                if (e.message?.includes('rate-overlimit')) {
-                                    await new Promise(r => setTimeout(r, 2000));
-                                    await nimesha.readMessages([message.key]).catch(() => {});
-                                }
-                            }
+                    try {
+                        // Status ස්වයංක්‍රීයව read/view කරනවා
+                        await nimesha.readMessages([m.key]);
+                        console.log(`👁️ AutoStatus View - @${(m.key.participant || '').split('@')[0]}`);
+                        // autostatusreact enabled නම් react කරනවා
+                        if (set.autostatusreact) {
+                            const emoji = getRandomEmoji();
+                            await nimesha.sendMessage(
+                                m.key.participant || m.key.remoteJid,
+                                { react: { text: emoji, key: m.key } }
+                            ).catch(() => {});
+                            console.log(`❤️ AutoStatus React - ${emoji}`);
+                        }
+                    } catch (e) {
+                        if (e.message?.includes('rate-overlimit')) {
+                            await new Promise(r => setTimeout(r, 2000));
+                            await nimesha.readMessages([m.key]).catch(() => {});
+                        } else {
+                            console.log('[AutoStatus view err]', e.message);
                         }
                     }
                 }
