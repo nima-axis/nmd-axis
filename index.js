@@ -249,7 +249,7 @@
                         detached: false,
                         env: { ...process.env, _GIT_PULL_DONE: '1' }
                     });
-                    child.on('exit', (code) => process.exit(code ?? 0));
+                    child.on('exit', (code) => { console.log('[git-pull child exited]', code); }); // process.exit DISABLED
                     return; // මෙතනදී exit — restart child handle කරයි
                 }
             } else {
@@ -718,18 +718,19 @@ async function startnimaBot() {
 startnimaBot()
 
 const cleanup = async (signal) => {
-	console.log(`${signal} ලැබුණි. 💾 Database save කරමින්...`)
-	if (global.db) await database.write(global.db)
-	if (global.store) await storeDB.write(global.store)
-	server.close(() => {
-		console.log('✅ සාර්ථකව ඉවත් උණි...')
-		process.exit(0)
-	})
+	console.log(`${signal} ලැබුණි. 💾 Database save කරමින්... (bot දිගටම run වෙනවා)`)
+	try {
+		if (global.db) await database.write(global.db)
+		if (global.store) await storeDB.write(global.store)
+	} catch(e) {
+		console.error('[cleanup db error]', e?.message)
+	}
+	// process.exit DISABLED — bot session crash නොවෙන්න
 }
 
 process.on('SIGINT', () => cleanup('SIGINT'))
 process.on('SIGTERM', () => cleanup('SIGTERM'))
-process.on('exit', () => cleanup('exit'))
+// process.on('exit', () => cleanup('exit')) — disabled
 // SIGUSR1 default ලෙස Node.js debugger activate කරනවා — override කරනවා
 process.on('SIGUSR1', () => console.log('SIGUSR1 received — ignored'))
 process.on('SIGUSR2', () => console.log('SIGUSR2 received — ignored'))

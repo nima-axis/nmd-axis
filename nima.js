@@ -899,10 +899,8 @@ module.exports = nimesha = async (nimesha, m, msg, store) => {
 			// Owner Menu
 			case 'shutdown': case 'off': {
 				if (!isCreator) return m.reply(mess.owner)
-				m.reply(`🔴 *Bot Shutdown වෙමින්...*
-_ස්තූතියි!_`).then(() => {
-					process.exit(0)
-				})
+				// process.exit DISABLED — session crash නොවෙන්න
+				m.reply(`⚠️ *Shutdown disabled* — bot session protect කිරීම සඳහා shutdown off කර ඇත.`)
 			}
 			break
 			case 'byq': {

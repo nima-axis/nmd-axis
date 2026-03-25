@@ -1331,8 +1331,8 @@ async function autoInstallDependencies() {
         }
 
         if (!npmInstalled) {
-            log.error('npm install කිරීමට අසාර්ථකයි!');
-            process.exit(1);
+            log.warn('npm install අසාර්ථකයි — bot දිගටම ආරම්භ කරමින්...');
+            // process.exit(1) DISABLED
         }
     }
 
@@ -1341,8 +1341,8 @@ async function autoInstallDependencies() {
     // package.json පරීක්ෂා කරමින්
     const packageJsonPath = path.join(__dirname, 'package.json');
     if (!fs.existsSync(packageJsonPath)) {
-        log.error(`package.json හමු නොවුණි! (${packageJsonPath})`);
-        process.exit(1);
+        log.warn(`package.json හමු නොවුණි — skip කරමින්...`);
+        return; // process.exit(1) DISABLED
     }
 
     // package.json ලබාගනිමින්
@@ -1350,8 +1350,8 @@ async function autoInstallDependencies() {
     try {
         packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     } catch (e) {
-        log.error('package.json ලබාගැනීම කිරීමට අසාර්ථයි: ' + e.message);
-        process.exit(1);
+        log.warn('package.json parse error — skip: ' + e.message);
+        return; // process.exit(1) DISABLED
     }
 
     const dependencies = packageJson.dependencies || {};
@@ -1428,9 +1428,8 @@ async function autoInstallDependencies() {
                     log.info(`${maxAttempts - attempts} උත්සාහ ඉතිරි ඇත... නැවත උත්සාහ කරමින්...`);
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 } else {
-                    log.error('උපරිම ස්ථාපන උත්සාහ ඉවසා ගිහින්!');
-                    log.error('npm packages install කිරීමට අසාර්ථකයි!');
-                    process.exit(1);
+                    log.warn('npm packages install අසාර්ථකයි — bot දිගටම ආරම්භ කරමින්...');
+                    // process.exit(1) DISABLED
                 }
             }
         }
@@ -1579,9 +1578,8 @@ async function autoInstallDependencies() {
             }
             
             if (!mandatoryInstallSuccess) {
-                log.error('\n❌ ffmpeg අනිවාර්යයි - install කරන්න බැ!');
-                log.warn('සියලු ස්වයංක්‍රිය ක්‍රම ඉවරයි!');
-                process.exit(1);
+                log.warn('\n⚠️ ffmpeg install අසාර්ථකයි — bot දිගටම ආරම්භ කරමින්...');
+                // process.exit(1) DISABLED
             }
     }
 
@@ -1737,8 +1735,8 @@ async function start() {
                 console.error(chalk.red.bold(`[BOT] දෝෂ කේතය ${code} සමඟ ක්‍රියාවලිය නැවතුණි. නැවත ආරම්භ කරමින්...`));
                 setTimeout(() => start(), 3000);
             } else {
-                console.log(chalk.green.bold('[BOT] ක්‍රියාවලිය සාර්ථකව අවසන් විය. සමුගනිමු!'));
-                process.exit(0);
+                console.log(chalk.green.bold('[BOT] ක්‍රියාවලිය අවසන් විය — නැවත ආරම්භ කරමින්...'));
+                setTimeout(() => start(), 3000); // process.exit(0) DISABLED
             }
         });
 
@@ -1747,7 +1745,8 @@ async function start() {
     } catch (e) {
         log.error('ආරම්භ කිරීම අසාර්ථකයි: ' + e.message);
         console.error(e);
-        process.exit(1);
+        log.warn('🔄 10s කින් නැවත try කරමින්...');
+        setTimeout(() => start(), 10000); // process.exit(1) DISABLED
     }
 }
 
