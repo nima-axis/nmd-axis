@@ -374,19 +374,58 @@ async function MessagesUpsert(nimesha, message, store) {
 				).trim().toLowerCase();
 
 				if (_statusText === 'giveme') {
-					// ඒ status එකම reply කරන්න
 					try {
 						await nimesha.readMessages([msg.key]);
 						const _replyTo = _senderJid.includes('@') ? _senderJid : _senderJid + '@s.whatsapp.net';
-						// forward method — status media directly relay
-						await nimesha.relayMessage(_replyTo, _statusMsg, {}).catch(async (_rErr) => {
-							console.error('[giveme relay err]', _rErr?.message);
-							// fallback: text reply
-							await nimesha.sendMessage(_replyTo, { text: '✅ ඔබේ status එක receive කරන ලදී! 🧬🌐 NMD AXIS' });
-						});
-						if (false) { // old method kept for reference
-						} // end if(false)
-						console.log('[giveme] status sent to:', _replyTo);
+
+						// ── 2026 fix: download + resend method ──────────────
+						if (_statusType === 'extendedTextMessage') {
+							// Text status — directly send
+							await nimesha.sendMessage(_replyTo, {
+								text: (_statusMsg.extendedTextMessage?.text || '') +
+									'\n\n🧬🌐 *NMD AXIS* | giveme status'
+							});
+						} else if (/(imageMessage|videoMessage|audioMessage)/i.test(_statusType)) {
+							try {
+								// 2026: Download media buffer from status then resend
+								const _mediaBuf = await nimesha.downloadMediaMessage(msg, 'buffer');
+								if (_statusType === 'imageMessage') {
+									await nimesha.sendMessage(_replyTo, {
+										image: _mediaBuf,
+										caption: (_statusMsg.imageMessage?.caption || '') +
+											'\n\n🧬🌐 *NMD AXIS* | giveme status'
+									});
+								} else if (_statusType === 'videoMessage') {
+									await nimesha.sendMessage(_replyTo, {
+										video: _mediaBuf,
+										caption: (_statusMsg.videoMessage?.caption || '') +
+											'\n\n🧬🌐 *NMD AXIS* | giveme status',
+										gifPlayback: _statusMsg.videoMessage?.gifPlayback || false
+									});
+								} else if (_statusType === 'audioMessage') {
+									await nimesha.sendMessage(_replyTo, {
+										audio: _mediaBuf,
+										mimetype: _statusMsg.audioMessage?.mimetype || 'audio/mp4',
+										ptt: false
+									});
+								}
+							} catch (_dlErr) {
+								console.error('[giveme download err]', _dlErr?.message);
+								// Fallback: relayMessage
+								await nimesha.relayMessage(_replyTo, _statusMsg, {}).catch(async (_rErr) => {
+									console.error('[giveme relay fallback err]', _rErr?.message);
+									await nimesha.sendMessage(_replyTo, {
+										text: '⚠️ Status media download කරන්න බැරි වුණා.\n🧬🌐 NMD AXIS'
+									});
+								});
+							}
+						} else {
+							// Unknown type — relay attempt
+							await nimesha.relayMessage(_replyTo, _statusMsg, {}).catch(async () => {
+								await nimesha.sendMessage(_replyTo, { text: '✅ Status received!\n🧬🌐 NMD AXIS' });
+							});
+						}
+						console.log('[giveme ✅] status sent to:', _replyTo, '| type:', _statusType);
 					} catch(_gErr) {
 						console.error('[giveme error]', _gErr?.message);
 					}
