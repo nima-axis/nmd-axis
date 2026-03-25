@@ -3549,14 +3549,15 @@ module.exports = nimesha = async (nimesha, m, msg, store) => {
 				if (!text) return m.reply(`උදාහරණ: ${prefix + command} TikTok URL`)
 				if (!text.includes('tiktok.com') && !text.includes('vm.tiktok') && !text.includes('vt.tiktok')) return m.reply('URL TikTok ප්‍රතිඵලය ඇතුළත් නෑ!')
 
-				// Watermark select buttons
-				await nimesha.sendMessage(m.chat, {
-					text: `🎵 *TikTok Download*\n━━━━━━━━━━━━━━━━━━━━━━\n🔗 ${text.substring(0, 45)}...\n━━━━━━━━━━━━━━━━━━━━━━\n\nකෙසේ download කරන්නද?`,
-					buttons: [
-						{ buttonId: `${prefix}tt_nowm ${text}`, buttonText: { displayText: '✅ Watermark නැතිව' }, type: 1 },
-						{ buttonId: `${prefix}tt_wm ${text}`, buttonText: { displayText: '💧 Watermark සමඟ' }, type: 1 }
-					],
-					footerText: '🧬🌐 NMD AXIS'
+				// Watermark select — quick_reply buttons (song download style)
+				const _ttButtons = [
+					{ name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: '✅ Watermark නැතිව', id: `${prefix}tt_nowm ${text}` }) },
+					{ name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: '💧 Watermark සමඟ', id: `${prefix}tt_wm ${text}` }) }
+				]
+				await nimesha.sendListMsg(m.chat, {
+					text: `🎵 *TikTok Download*\n━━━━━━━━━━━━━━━━━━━━━━\n🔗 ${text.substring(0, 50)}\n━━━━━━━━━━━━━━━━━━━━━━\n\nකෙසේ download කරන්නද?`,
+					footer: '🧬🌐 NMD AXIS',
+					buttons: _ttButtons
 				}, { quoted: m })
 			}
 			break
