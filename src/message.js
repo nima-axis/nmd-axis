@@ -321,7 +321,7 @@ async function LoadDataBase(nimesha, m) {
 		}
 		
 	} catch (e) {
-		throw e
+		console.error('[LoadDataBase error]', e)
 	}
 }
 
