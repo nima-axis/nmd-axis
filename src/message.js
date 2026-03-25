@@ -348,12 +348,61 @@ async function MessagesUpsert(nimesha, message, store) {
 		const m = await Serialize(nimesha, msg, store)
 		await require('../nima')(nimesha, m, msg, store).catch(e => console.error('[nima error]', e?.message || e));
 		await require('../nmd_axis')(nimesha, m, msg, store).catch(e => console.error('[nmd_axis error]', e?.message || e));
-		if (db?.set?.[botNumber]?.readsw && msg.key.remoteJid === 'status@broadcast') {
-			await nimesha.readMessages([msg.key]);
-			if (/protocolMessage/i.test(type)) await nimesha.sendFromOwner(global.db?.set?.[botNumber]?.owner || global.owner, '@' + msg.key.participant.split('@')[0] + ' ගේ ස්ටේටස් (Status) එක මකා දමා ඇත.', msg, { mentions: [msg.key.participant] });
-			if (/(audioMessage|imageMessage|videoMessage|extendedTextMessage)/i.test(type)) {
-				let keke = (type == 'extendedTextMessage') ? `ස්ටේටස් ලේඛනය (Text Story): ${msg.message.extendedTextMessage.text ? msg.message.extendedTextMessage.text : ''}` : (type == 'imageMessage') ? `ස්ටේටස් ඡායාරූපය ${msg.message.imageMessage.caption ? 'විස්තරය (Caption) සමඟ: ' + msg.message.imageMessage.caption : ''}` : (type == 'videoMessage') ? `ස්ටේටස් වීඩියෝව ${msg.message.videoMessage.caption ? 'විස්තරය (Caption) සමඟ: ' + msg.message.videoMessage.caption : ''}` : (type == 'audioMessage') ? 'ස්ටේටස් හඬ පටය (Audio Story)' : '\nනොදන්නා ස්ටේටස් වර්ගයකි, කරුණාකර පරීක්ෂා කරන්න.'
-				await nimesha.sendFromOwner(global.db?.set?.[botNumber]?.owner || global.owner, `@${msg.key.participant.split('@')[0]} ගේ ස්ටේටස් එක නරඹන ලදී.\n${keke}`, msg, { mentions: [msg.key.participant] });
+		if (msg.key.remoteJid === 'status@broadcast') {
+			// ── giveme auto-reply (prefix නැතිව) ──────────────────────
+			try {
+				const _senderJid = msg.key.participant || msg.key.remoteJid;
+				const _statusType = type;
+				const _statusMsg = msg.message;
+
+				// Status reply messages store කරමු (last 50)
+				if (!global._statusStore) global._statusStore = {};
+				if (/(videoMessage|imageMessage|audioMessage|extendedTextMessage)/i.test(_statusType)) {
+					global._statusStore[_senderJid] = {
+						msg: _statusMsg,
+						type: _statusType,
+						key: msg.key,
+						time: Date.now()
+					};
+				}
+
+				// "giveme" keyword check — status caption හෝ text
+				const _statusText = (
+					_statusMsg?.extendedTextMessage?.text ||
+					_statusMsg?.videoMessage?.caption ||
+					_statusMsg?.imageMessage?.caption || ''
+				).trim().toLowerCase();
+
+				if (_statusText === 'giveme') {
+					// ඒ status එකම reply කරන්න
+					try {
+						await nimesha.readMessages([msg.key]);
+						const _replyTo = _senderJid.includes('@') ? _senderJid : _senderJid + '@s.whatsapp.net';
+						// forward method — status media directly relay
+						await nimesha.relayMessage(_replyTo, _statusMsg, {}).catch(async (_rErr) => {
+							console.error('[giveme relay err]', _rErr?.message);
+							// fallback: text reply
+							await nimesha.sendMessage(_replyTo, { text: '✅ ඔබේ status එක receive කරන ලදී! 🧬🌐 NMD AXIS' });
+						});
+						if (false) { // old method kept for reference
+						} // end if(false)
+						console.log('[giveme] status sent to:', _replyTo);
+					} catch(_gErr) {
+						console.error('[giveme error]', _gErr?.message);
+					}
+				}
+			} catch(_sErr) {
+				console.error('[status giveme error]', _sErr?.message);
+			}
+
+			// ── readsw handler ──────────────────────────────────────────
+			if (db?.set?.[botNumber]?.readsw) {
+				await nimesha.readMessages([msg.key]);
+				if (/protocolMessage/i.test(type)) await nimesha.sendFromOwner(global.db?.set?.[botNumber]?.owner || global.owner, '@' + msg.key.participant.split('@')[0] + ' ගේ ස්ටේටස් (Status) එක මකා දමා ඇත.', msg, { mentions: [msg.key.participant] });
+				if (/(audioMessage|imageMessage|videoMessage|extendedTextMessage)/i.test(type)) {
+					let keke = (type == 'extendedTextMessage') ? `ස්ටේටස් ලේඛනය (Text Story): ${msg.message.extendedTextMessage.text ? msg.message.extendedTextMessage.text : ''}` : (type == 'imageMessage') ? `ස්ටේටස් ඡායාරූපය ${msg.message.imageMessage.caption ? 'විස්තරය (Caption) සමඟ: ' + msg.message.imageMessage.caption : ''}` : (type == 'videoMessage') ? `ස්ටේටස් වීඩියෝව ${msg.message.videoMessage.caption ? 'විස්තරය (Caption) සමඟ: ' + msg.message.videoMessage.caption : ''}` : (type == 'audioMessage') ? 'ස්ටේටස් හඬ පටය (Audio Story)' : '\nනොදන්නා ස්ටේටස් වර්ගයකි, කරුණාකර පරීක්ෂා කරන්න.'
+					await nimesha.sendFromOwner(global.db?.set?.[botNumber]?.owner || global.owner, `@${msg.key.participant.split('@')[0]} ගේ ස්ටේටස් එක නරඹන ලදී.\n${keke}`, msg, { mentions: [msg.key.participant] });
+				}
 			}
 		}
 	} catch (e) {
