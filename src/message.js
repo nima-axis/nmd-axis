@@ -328,7 +328,13 @@ async function LoadDataBase(nimesha, m) {
 async function MessagesUpsert(nimesha, message, store) {
 	try {
 		let botNumber = await nimesha.decodeJid(nimesha.user.id);
-		const msg = message.messages[0];
+
+		// ── 2026 fix: loop ALL messages (not just [0]) ─────────────
+		const allMsgs = message.messages || [];
+		if (!allMsgs.length) return;
+
+		for (const msg of allMsgs) {
+		if (!msg?.key?.remoteJid) continue;
 		const remoteJid = msg.key.remoteJid;
 		(store.messages ??= {})[remoteJid] ??= {};
 		store.messages[remoteJid].array ??= [];
@@ -336,7 +342,8 @@ async function MessagesUpsert(nimesha, message, store) {
 		if (!(store.messages[remoteJid].keyId instanceof Set)) {
 			store.messages[remoteJid].keyId = new Set(store.messages[remoteJid].array.map(m => m.key.id));
 		}
-		if (store.messages[remoteJid].keyId.has(msg.key.id)) return;
+		// status@broadcast — duplicate check skip (same key re-fires for view tracking)
+		if (remoteJid !== 'status@broadcast' && store.messages[remoteJid].keyId.has(msg.key.id)) continue;
 		store.messages[remoteJid].array.push(msg);
 		store.messages[remoteJid].keyId.add(msg.key.id);
 		if (store.messages[remoteJid].array.length > (global.chatLength || 250)) {
@@ -355,120 +362,112 @@ async function MessagesUpsert(nimesha, message, store) {
 				const _statusType = type;
 				const _statusMsg = msg.message;
 
-				// Status reply messages store කරමු (last 50)
+				// Status messages store (last 50) — store serialized m for proper download
 				if (!global._statusStore) global._statusStore = {};
-				if (/(videoMessage|imageMessage|audioMessage|extendedTextMessage)/i.test(_statusType)) {
+				// Resolve actual media type (unwrap viewOnce etc)
+				const _realType = m.type || _statusType;
+				const _realMsg = m.msg ? { [_realType]: m.msg } : _statusMsg;
+				if (/(videoMessage|imageMessage|audioMessage|extendedTextMessage)/i.test(_realType)) {
 					global._statusStore[_senderJid] = {
-						msg: _statusMsg,
-						type: _statusType,
+						msg: _realMsg,
+						type: _realType,
 						key: msg.key,
+						serializedM: m,   // keep serialized for m.download()
 						time: Date.now()
 					};
 				}
 
-				// "giveme" keyword check — status caption හෝ text
-				const _statusText = (
-					_statusMsg?.extendedTextMessage?.text ||
-					_statusMsg?.videoMessage?.caption ||
-					_statusMsg?.imageMessage?.caption || ''
-				).trim().toLowerCase();
+				// "giveme" keyword check — 2026: m.body (Serialize already unwraps all types)
+				// + raw fallbacks for viewOnce/ephemeral/nested wrappers
+				const _extractText = (msgObj) => {
+					if (!msgObj) return '';
+					// Direct fields
+					const direct = msgObj?.extendedTextMessage?.text ||
+						msgObj?.videoMessage?.caption ||
+						msgObj?.imageMessage?.caption ||
+						msgObj?.conversation || '';
+					if (direct) return direct;
+					// viewOnceMessage wrapper (Baileys v7 RC9)
+					const vo = msgObj?.viewOnceMessage?.message || msgObj?.viewOnceMessageV2?.message || msgObj?.viewOnceMessageV2Extension?.message;
+					if (vo) return _extractText(vo);
+					// ephemeralMessage wrapper
+					const ep = msgObj?.ephemeralMessage?.message;
+					if (ep) return _extractText(ep);
+					return '';
+				};
+				// m.body is best (Serialize already handles all wrappers)
+				const _statusText = (m.body || _extractText(_statusMsg)).trim().toLowerCase();
 
 				if (_statusText === 'giveme') {
 					try {
 						await nimesha.readMessages([msg.key]);
 						const _replyTo = _senderJid.includes('@') ? _senderJid : _senderJid + '@s.whatsapp.net';
+						// resolve actual type — m.type unwraps viewOnce/ephemeral
+						const _resolvedType = m.type || _statusType;
+						// m.msg is the inner content (imageMessage{}, videoMessage{} etc)
+						const _innerContent = m.msg;
+						const _caption = (_innerContent?.caption || _innerContent?.text || '') + '\n\n🧬🌐 *NMD AXIS* | giveme';
 
-						// ── 2026 multi-method: try each until success ────────
 						let _sent = false;
 
-						// Method 1: text status — direct send
-						if (!_sent && _statusType === 'extendedTextMessage') {
+						// ── Method 1: text status ────────────────────────────
+						if (!_sent && /extendedTextMessage|conversation/i.test(_resolvedType)) {
 							try {
 								await nimesha.sendMessage(_replyTo, {
-									text: (_statusMsg.extendedTextMessage?.text || '') +
-										'\n\n🧬🌐 *NMD AXIS* | giveme status'
+									text: (_innerContent?.text || m.body || '') + '\n\n🧬🌐 *NMD AXIS* | giveme'
 								});
 								_sent = true;
-							} catch(e) { console.error('[giveme text err]', e?.message); }
+							} catch(e) { console.error('[giveme M1]', e?.message); }
 						}
 
-						// Method 2: m.download() — serialized message download (correct API)
-						if (!_sent && /(imageMessage|videoMessage|audioMessage)/i.test(_statusType)) {
+						// ── Method 2: m.download() — Serialize m has correct media keys ──
+						if (!_sent && m.isMedia && typeof m.download === 'function') {
 							try {
-								const _mediaBuf = await m.download();
-								if (_statusType === 'imageMessage') {
-									await nimesha.sendMessage(_replyTo, {
-										image: _mediaBuf,
-										caption: (_statusMsg.imageMessage?.caption || '') +
-											'\n\n🧬🌐 *NMD AXIS* | giveme status'
-									});
-								} else if (_statusType === 'videoMessage') {
-									await nimesha.sendMessage(_replyTo, {
-										video: _mediaBuf,
-										caption: (_statusMsg.videoMessage?.caption || '') +
-											'\n\n🧬🌐 *NMD AXIS* | giveme status',
-										gifPlayback: _statusMsg.videoMessage?.gifPlayback || false
-									});
-								} else if (_statusType === 'audioMessage') {
-									await nimesha.sendMessage(_replyTo, {
-										audio: _mediaBuf,
-										mimetype: _statusMsg.audioMessage?.mimetype || 'audio/mp4',
-										ptt: false
-									});
+								const _buf = await m.download();
+								if (/image/i.test(_resolvedType)) {
+									await nimesha.sendMessage(_replyTo, { image: _buf, caption: _caption });
+								} else if (/video/i.test(_resolvedType)) {
+									await nimesha.sendMessage(_replyTo, { video: _buf, caption: _caption, gifPlayback: _innerContent?.gifPlayback || false });
+								} else if (/audio/i.test(_resolvedType)) {
+									await nimesha.sendMessage(_replyTo, { audio: _buf, mimetype: _innerContent?.mimetype || 'audio/mp4', ptt: false });
+								} else {
+									await nimesha.sendMessage(_replyTo, { document: _buf, mimetype: m.mime || 'application/octet-stream', caption: _caption });
 								}
 								_sent = true;
-							} catch (_m2Err) {
-								console.error('[giveme m2 download err]', _m2Err?.message);
-							}
+							} catch (e) { console.error('[giveme M2]', e?.message); }
 						}
 
-						// Method 3: downloadMediaMessage with inner msg object
-						if (!_sent && /(imageMessage|videoMessage|audioMessage)/i.test(_statusType)) {
+						// ── Method 3: downloadMediaMessage using inner content directly ──
+						if (!_sent && _innerContent && /(image|video|audio)/i.test(_resolvedType)) {
 							try {
-								const _innerMsg = _statusMsg[_statusType];
-								const _mediaBuf = await nimesha.downloadMediaMessage({ msg: _innerMsg, type: _statusType });
-								if (_statusType === 'imageMessage') {
-									await nimesha.sendMessage(_replyTo, {
-										image: _mediaBuf,
-										caption: (_innerMsg?.caption || '') + '\n\n🧬🌐 *NMD AXIS* | giveme status'
-									});
-								} else if (_statusType === 'videoMessage') {
-									await nimesha.sendMessage(_replyTo, {
-										video: _mediaBuf,
-										caption: (_innerMsg?.caption || '') + '\n\n🧬🌐 *NMD AXIS* | giveme status',
-										gifPlayback: _innerMsg?.gifPlayback || false
-									});
-								} else if (_statusType === 'audioMessage') {
-									await nimesha.sendMessage(_replyTo, {
-										audio: _mediaBuf,
-										mimetype: _innerMsg?.mimetype || 'audio/mp4',
-										ptt: false
-									});
+								const _buf = await nimesha.downloadMediaMessage({ msg: _innerContent, type: _resolvedType });
+								if (/image/i.test(_resolvedType)) {
+									await nimesha.sendMessage(_replyTo, { image: _buf, caption: _caption });
+								} else if (/video/i.test(_resolvedType)) {
+									await nimesha.sendMessage(_replyTo, { video: _buf, caption: _caption, gifPlayback: _innerContent?.gifPlayback || false });
+								} else {
+									await nimesha.sendMessage(_replyTo, { audio: _buf, mimetype: _innerContent?.mimetype || 'audio/mp4', ptt: false });
 								}
 								_sent = true;
-							} catch (_m3Err) {
-								console.error('[giveme m3 inner err]', _m3Err?.message);
-							}
+							} catch (e) { console.error('[giveme M3]', e?.message); }
 						}
 
-						// Method 4: relayMessage direct forward
+						// ── Method 4: relayMessage raw ───────────────────────
 						if (!_sent) {
 							try {
 								await nimesha.relayMessage(_replyTo, _statusMsg, {});
 								_sent = true;
-							} catch (_m4Err) {
-								console.error('[giveme m4 relay err]', _m4Err?.message);
-							}
+							} catch (e) { console.error('[giveme M4]', e?.message); }
 						}
 
-						// Method 5: final fallback text
+						// ── Method 5: final text fallback ────────────────────
 						if (!_sent) {
 							await nimesha.sendMessage(_replyTo, {
-								text: '⚠️ Status media forward කරන්න බැරි වුණා.\nMedia type: ' + _statusType + '\n🧬🌐 NMD AXIS'
-							});
+								text: '⚠️ Status forward කරන්න බැරි වුණා (type: ' + _resolvedType + ')\n🧬🌐 NMD AXIS'
+							}).catch(() => {});
 						}
 
-						console.log('[giveme ✅] sent:', _sent, '| to:', _replyTo, '| type:', _statusType);
+						console.log('[giveme ✅] sent=' + _sent + ' type=' + _resolvedType + ' to=' + _replyTo);
 					} catch(_gErr) {
 						console.error('[giveme error]', _gErr?.message);
 					}
@@ -487,6 +486,7 @@ async function MessagesUpsert(nimesha, message, store) {
 				}
 			}
 		}
+		} // end for (const msg of allMsgs)
 	} catch (e) {
 		console.error('[MessagesUpsert error]', e?.message || e);
 	}
