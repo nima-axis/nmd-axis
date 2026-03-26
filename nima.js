@@ -4672,7 +4672,25 @@ module.exports = nimesha = async (nimesha, m, msg, store) => {
 							buttons: [{ name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: '🔍 SEARCH Menu විවෘත කරන්න', id: prefix + 'searchmenu' }) }]
 						},
 						{
-							url: 'https://i.ibb.co/MDcvDZqT/z-R.jpg',
+							url: await (async () => {
+								try {
+									// Owner number ගාව DP url fetch කරනවා
+									const ownerJid = (global.owner?.[0] || '').replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+									if (ownerJid && ownerJid !== '@s.whatsapp.net') {
+										const dpUrl = await nimesha.profilePictureUrl(ownerJid, 'image');
+										if (dpUrl) return dpUrl;
+									}
+								} catch (_) {}
+								// fallback — bot DP try කරනවා
+								try {
+									const botJid = nimesha.user?.id?.replace(':0@', '@') || nimesha.user?.id;
+									if (botJid) {
+										const dpUrl = await nimesha.profilePictureUrl(botJid, 'image');
+										if (dpUrl) return dpUrl;
+									}
+								} catch (_) {}
+								return 'https://i.ibb.co/MDcvDZqT/z-R.jpg';
+							})(),
 							body: '🔐 *Privacy Manager*\n━━━━━━━━━━━━━━━━━\n▸ .privacy 1-3 — Last Seen\n▸ .privacy 4-5 — Online Status\n▸ .privacy 6-8 — Profile Picture\n▸ .privacy 9-11 — Status Updates\n▸ .privacy 12-13 — Read Receipts\n▸ .privacy 14-16 — Groups Add\n▸ .privacy 17-20 — Disappearing\n▸ .privacy 21 — Block List',
 							footer: '👆 Tap — Privacy settings open වෙනවා',
 							buttons: [{ name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: '🔐 Privacy Menu විවෘත කරන්න', id: prefix + 'privacy' }) }]
